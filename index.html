@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>翻牌記憶遊戲</title>
+<style>
+  :root {
+    --desk: #172036;
+    --desk-2: #22304f;
+    --back: #3556a8;
+    --back-dot: #4a6cc0;
+    --paper: #fbf8f1;
+    --ink: #1c2233;
+    --word: #d9483b;
+    --meaning: #1b8383;
+    --gold: #f2c14e;
+    --text: #eef1f8;
+    --muted: #9fb0d3;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--desk);
+    color: var(--text);
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC", system-ui, sans-serif;
+    min-height: 100vh;
+  }
+  button, select, input, textarea { font: inherit; color: inherit; }
+  button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, .card:focus-visible {
+    outline: 3px solid var(--gold); outline-offset: 2px;
+  }
+
+  /* ---------- 上方工具列 ---------- */
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+    padding: 14px 24px;
+    background: var(--desk-2);
+    border-bottom: 1px solid #33456d;
+  }
+  h1 { margin: 0; font-size: clamp(20px, 2.6vw, 30px); font-weight: 800; letter-spacing: .04em; flex: 1 1 260px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .controls label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 15px; }
+  select {
+    background: var(--desk); border: 1px solid #405484;
+    border-radius: 8px; padding: 7px 10px; color: var(--text);
+  }
+  .btn {
+    background: #33456d; border: 0; border-radius: 8px; padding: 9px 16px; cursor: pointer;
+    font-weight: 600; color: var(--text);
+  }
+  .btn:hover { background: #40548a; }
+  .btn.primary { background: var(--gold); color: #2a2200; }
+  .btn.primary:hover { background: #f7cf72; }
+
+  /* ---------- 狀態列 ---------- */
+  .status {
+    display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; justify-content: center;
+    padding: 14px 24px 4px; min-height: 64px;
+  }
+  .stat { font-size: 18px; color: var(--muted); }
+  .stat b { color: var(--text); font-size: 24px; font-variant-numeric: tabular-nums; margin-left: 4px; }
+  .team {
+    padding: 8px 20px; border-radius: 999px; border: 3px solid transparent;
+    background: var(--desk-2); font-size: 20px; font-weight: 700;
+    display: flex; gap: 10px; align-items: baseline;
+  }
+  .team .pts { font-size: 28px; font-variant-numeric: tabular-nums; }
+  .team.turn { border-color: var(--gold); background: #2c3d66; transform: scale(1.06); }
+
+  /* ---------- 牌桌 ---------- */
+  main { padding: 8px 24px 40px; }
+  .board {
+    --cols: 4;
+    display: grid; grid-template-columns: repeat(var(--cols), 1fr);
+    gap: clamp(8px, 1.4vw, 18px);
+    max-width: 1200px; margin: 0 auto;
+    perspective: 1200px;
+  }
+  .card {
+    position: relative; aspect-ratio: 4 / 3; cursor: pointer; border: 0; padding: 0; background: none;
+    transform-style: preserve-3d; transition: transform .45s cubic-bezier(.3,.7,.3,1);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .card.flipped { transform: rotateY(180deg); }
+  .face {
+    position: absolute; inset: 0; border-radius: 14px; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    padding: 10px 14px; overflow: hidden; overflow-wrap: anywhere;
+  }
+  .back {
+    background-color: var(--back);
+    background-image: radial-gradient(var(--back-dot) 2px, transparent 2.5px);
+    background-size: 18px 18px;
+    box-shadow: 0 3px 0 #22397a, 0 6px 14px rgba(0,0,0,.35);
+    border: 3px solid #6f8bd6;
+  }
+  .back::after {
+    content: "?"; font-size: clamp(28px, 5vw, 56px); font-weight: 800; color: #dbe5ff;
+    background: var(--back); padding: 0 14px; border-radius: 10px;
+  }
+  .front {
+    transform: rotateY(180deg);
+    background: var(--paper); color: var(--ink);
+    border-top: 12px solid #999;
+    box-shadow: 0 6px 14px rgba(0,0,0,.35);
+    font-weight: 700; line-height: 1.25;
+  }
+  .color-on .front.is-word { border-top-color: var(--word); }
+  .color-on .front.is-meaning { border-top-color: var(--meaning); }
+  .front.l { font-size: clamp(22px, 3.6vw, 46px); }
+  .front.m { font-size: clamp(18px, 2.7vw, 34px); }
+  .front.s { font-size: clamp(14px, 2vw, 24px); font-weight: 600; }
+  .card.matched .front { background: #e6f5e8; box-shadow: 0 0 0 4px #58c46b, 0 6px 14px rgba(0,0,0,.35); }
+  .card.matched { cursor: default; }
+  .card.shake { animation: shake .4s; }
+  @keyframes shake { 25% { translate: -6px 0; } 75% { translate: 6px 0; } }
+
+  /* ---------- 完成畫面 ---------- */
+  .win {
+    position: fixed; inset: 0; background: rgba(10,15,30,.78); display: none;
+    align-items: center; justify-content: center; z-index: 20; padding: 20px;
+  }
+  .win.show { display: flex; }
+  .win-box {
+    background: var(--paper); color: var(--ink); border-radius: 20px; padding: 32px 40px;
+    text-align: center; max-width: 460px; box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  }
+  .win-box h2 { margin: 0 0 8px; font-size: 34px; }
+  .win-box p { margin: 6px 0 22px; font-size: 20px; line-height: 1.5; }
+
+  /* ---------- 編輯視窗 ---------- */
+  dialog {
+    width: min(720px, 94vw); border: 0; border-radius: 16px; padding: 0;
+    background: var(--desk-2); color: var(--text);
+    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  }
+  dialog::backdrop { background: rgba(10,15,30,.7); }
+  .dlg { padding: 24px; display: grid; gap: 14px; }
+  .dlg h2 { margin: 0; font-size: 22px; }
+  .dlg label.f { display: grid; gap: 6px; color: var(--muted); font-size: 15px; }
+  .dlg input[type=text] {
+    background: var(--desk); border: 1px solid #405484; border-radius: 8px; padding: 9px 12px; color: var(--text);
+  }
+  textarea {
+    width: 100%; min-height: 300px; resize: vertical;
+    background: var(--desk); border: 1px solid #405484; border-radius: 8px; padding: 12px;
+    line-height: 1.7; font-size: 17px; color: var(--text);
+  }
+  .hint { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+  .hint code { background: var(--desk); padding: 1px 6px; border-radius: 4px; color: var(--gold); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .row .spacer { flex: 1; }
+  .warn { color: #ffb4a8; font-size: 15px; min-height: 1.2em; margin: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card { transition: none; }
+    .card.shake { animation: none; }
+  }
+  @media (max-width: 560px) {
+    header, .status, main { padding-left: 12px; padding-right: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="title">詞彙翻牌配對</h1>
+  <div class="controls">
+    <label>每回合配對數
+      <select id="pairCount">
+        <option value="4">4 組</option>
+        <option value="6" selected>6 組</option>
+        <option value="8">8 組</option>
+        <option value="10">10 組</option>
+        <option value="12">12 組</option>
+        <option value="all">全部</option>
+      </select>
+    </label>
+    <label>模式
+      <select id="mode">
+        <option value="solo">個人練習</option>
+        <option value="2">分組競賽・2 組</option>
+        <option value="3">分組競賽・3 組</option>
+        <option value="4">分組競賽・4 組</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="colorHint" checked> 顏色區分詞彙／解釋</label>
+    <button class="btn primary" id="newGame">新遊戲</button>
+    <button class="btn" id="openEditor">編輯詞庫</button>
+    <button class="btn" id="fullscreen" title="投影時建議使用">全螢幕</button>
+  </div>
+</header>
+
+<div class="status" id="status" aria-live="polite"></div>
+
+<main>
+  <div class="board color-on" id="board"></div>
+</main>
+
+<div class="win" id="win" role="dialog" aria-modal="true">
+  <div class="win-box">
+    <h2 id="winTitle">全部配對成功！</h2>
+    <p id="winText"></p>
+    <button class="btn primary" id="again">再玩一次</button>
+  </div>
+</div>
+
+<dialog id="editor">
+  <div class="dlg">
+    <h2>編輯詞庫</h2>
+    <label class="f">遊戲標題
+      <input type="text" id="titleInput" maxlength="40">
+    </label>
+    <label class="f">詞彙清單（一行一組）
+      <textarea id="wordsInput" spellcheck="false"></textarea>
+    </label>
+    <p class="hint">
+      格式：<code>詞彙 | 解釋</code>，一行一組。分隔符號可用 <code>|</code>、<code>,</code>、<code>，</code>、<code>=</code> 或 Tab。<br>
+      以 <code>#</code> 開頭的行會被略過，可當作備註。目前共 <b id="countInfo">0</b> 組。
+    </p>
+    <p class="warn" id="warn"></p>
+    <div class="row">
+      <button class="btn primary" id="saveEditor">儲存並開始</button>
+      <button class="btn" id="closeEditor">取消</button>
+      <span class="spacer"></span>
+      <button class="btn" id="downloadWords">下載詞庫檔</button>
+      <button class="btn" id="loadWords">載入詞庫檔</button>
+      <button class="btn" id="resetWords">還原範例</button>
+      <input type="file" id="fileInput" accept=".txt,.csv,text/plain" hidden>
+    </div>
+  </div>
+</dialog>
+
+<script>
+/* =====================================================================
+   想直接修改檔案內容的話，改這兩個地方就可以：
+   1. DEFAULT_TITLE：遊戲標題
+   2. DEFAULT_WORDS：預設詞庫，一行一組，格式「詞彙 | 解釋」
+   （用「編輯詞庫」按鈕修改的內容，會存在這台電腦的瀏覽器裡，
+     優先於這裡的預設值；按「還原範例」可回到這裡的內容。）
+   ===================================================================== */
+const DEFAULT_TITLE = "詞彙翻牌配對";
+const DEFAULT_WORDS = `
+# 範例：英文單字（可整段刪掉，換成自己的內容）
+apple | 蘋果
+banana | 香蕉
+teacher | 老師
+student | 學生
+library | 圖書館
+homework | 回家作業
+breakfast | 早餐
+weather | 天氣
+holiday | 假期
+neighbor | 鄰居
+delicious | 美味的
+borrow | 借（入）
+`;
+/* ===================================================================== */
+
+const $ = s => document.querySelector(s);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+};
+
+let rawWords = store.get("mg_words") ?? DEFAULT_WORDS;
+let gameTitle = store.get("mg_title") ?? DEFAULT_TITLE;
+
+const TEAM_NAMES = ["第 1 組", "第 2 組", "第 3 組", "第 4 組"];
+const TEAM_COLORS = ["#ff8a7a", "#5fd0cf", "#f2c14e", "#b39bff"];
+
+let cards = [], flipped = [], lock = false;
+let matched = 0, moves = 0, seconds = 0, timer = null, totalPairs = 0;
+let teamCount = 0, turn = 0, scores = [];
+
+/* ---------- 解析詞庫 ---------- */
+function parseWords(text) {
+  const out = [];
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const m = t.match(/[|\t,，=＝｜]/);
+    if (!m) continue;
+    const i = m.index;
+    const a = t.slice(0, i).trim();
+    const b = t.slice(i + 1).trim();
+    if (a && b) out.push({ a, b });
+  }
+  return out;
+}
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function sizeClass(text) {
+  const n = [...text].length;
+  return n > 14 ? "s" : n > 6 ? "m" : "l";
+}
+
+/* ---------- 新遊戲 ---------- */
+function newGame() {
+  clearInterval(timer); timer = null;
+  $("#win").classList.remove("show");
+  $("#title").textContent = gameTitle;
+  document.title = gameTitle;
+
+  const pool = parseWords(rawWords);
+  if (pool.length < 2) { openEditor("詞庫至少需要 2 組詞彙才能開始遊戲。"); return; }
+
+  const sel = $("#pairCount").value;
+  const n = sel === "all" ? pool.length : Math.min(parseInt(sel, 10), pool.length);
+  const picked = shuffle(pool).slice(0, n);
+  totalPairs = picked.length;
+
+  cards = [];
+  picked.forEach((p, i) => {
+    cards.push({ pair: i, text: p.a, kind: "word" });
+    cards.push({ pair: i, text: p.b, kind: "meaning" });
+  });
+  cards = shuffle(cards);
+
+  flipped = []; lock = false; matched = 0; moves = 0; seconds = 0;
+  const mode = $("#mode").value;
+  teamCount = mode === "solo" ? 0 : parseInt(mode, 10);
+  turn = 0; scores = new Array(teamCount).fill(0);
+
+  renderBoard();
+  renderStatus();
+}
+
+function renderBoard() {
+  const board = $("#board");
+  board.innerHTML = "";
+  board.classList.toggle("color-on", $("#colorHint").checked);
+  const c = cards.length;
+  const cols = c <= 16 ? 4 : c <= 20 ? 5 : c <= 30 ? 6 : 8;
+  board.style.setProperty("--cols", cols);
+
+  cards.forEach((card, idx) => {
+    const el = document.createElement("button");
+    el.className = "card";
+    el.type = "button";
+    el.setAttribute("aria-label", "翻牌 " + (idx + 1));
+
+    const back = document.createElement("div");
+    back.className = "face back";
+
+    const front = document.createElement("div");
+    front.className = "face front is-" + card.kind + " " + sizeClass(card.text);
+    front.textContent = card.text;
+
+    el.append(back, front);
+    el.addEventListener("click", () => flip(idx, el));
+    card.el = el;
+    board.appendChild(el);
+  });
+}
+
+function renderStatus() {
+  const s = $("#status");
+  s.innerHTML = "";
+  if (teamCount === 0) {
+    s.append(stat("翻牌次數", moves), stat("已配對", matched + " / " + totalPairs), stat("時間", fmt(seconds)));
+  } else {
+    scores.forEach((pts, i) => {
+      const t = document.createElement("div");
+      t.className = "team" + (i === turn ? " turn" : "");
+      t.style.color = TEAM_COLORS[i];
+      const name = document.createElement("span"); name.textContent = TEAM_NAMES[i];
+      const p = document.createElement("span"); p.className = "pts"; p.textContent = pts;
+      t.append(name, p);
+      s.appendChild(t);
+    });
+    s.append(stat("已配對", matched + " / " + totalPairs));
+  }
+}
+function stat(label, value) {
+  const d = document.createElement("div");
+  d.className = "stat";
+  d.append(label);
+  const b = document.createElement("b"); b.textContent = value;
+  d.appendChild(b);
+  return d;
+}
+const fmt = s => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+
+/* ---------- 遊戲流程 ---------- */
+function flip(idx, el) {
+  const card = cards[idx];
+  if (lock || card.done || flipped.includes(idx)) return;
+
+  if (teamCount === 0 && !timer) {
+    timer = setInterval(() => { seconds++; renderStatus(); }, 1000);
+  }
+
+  el.classList.add("flipped");
+  flipped.push(idx);
+  if (flipped.length < 2) return;
+
+  moves++;
+  const [i, j] = flipped;
+  const A = cards[i], B = cards[j];
+
+  if (A.pair === B.pair) {
+    A.done = B.done = true;
+    A.el.classList.add("matched"); B.el.classList.add("matched");
+    matched++;
+    if (teamCount) scores[turn]++;
+    flipped = [];
+    renderStatus();
+    if (matched === totalPairs) setTimeout(finish, 700);
+  } else {
+    lock = true;
+    setTimeout(() => {
+      A.el.classList.add("shake"); B.el.classList.add("shake");
+    }, 450);
+    setTimeout(() => {
+      A.el.classList.remove("flipped", "shake");
+      B.el.classList.remove("flipped", "shake");
+      flipped = []; lock = false;
+      if (teamCount) turn = (turn + 1) % teamCount;
+      renderStatus();
+    }, 1300);
+    renderStatus();
+  }
+}
+
+function finish() {
+  clearInterval(timer); timer = null;
+  const title = $("#winTitle"), text = $("#winText");
+  if (teamCount === 0) {
+    title.textContent = "全部配對成功！";
+    text.textContent = "共翻牌 " + moves + " 次，花了 " + fmt(seconds) + "。";
+  } else {
+    const max = Math.max(...scores);
+    const winners = scores.map((v, i) => v === max ? TEAM_NAMES[i] : null).filter(Boolean);
+    title.textContent = winners.length > 1 ? "平手！" : winners[0] + " 獲勝！";
+    text.textContent = scores.map((v, i) => TEAM_NAMES[i] + "：" + v + " 分").join("　");
+  }
+  $("#win").classList.add("show");
+}
+
+/* ---------- 編輯視窗 ---------- */
+const dlg = $("#editor");
+function openEditor(message) {
+  $("#titleInput").value = gameTitle;
+  $("#wordsInput").value = rawWords.trim();
+  $("#warn").textContent = message || "";
+  updateCount();
+  dlg.showModal();
+}
+function updateCount() {
+  $("#countInfo").textContent = parseWords($("#wordsInput").value).length;
+}
+$("#wordsInput").addEventListener("input", updateCount);
+
+$("#saveEditor").addEventListener("click", () => {
+  const words = $("#wordsInput").value;
+  if (parseWords(words).length < 2) {
+    $("#warn").textContent = "請至少輸入 2 組，格式：詞彙 | 解釋";
+    return;
+  }
+  rawWords = words;
+  gameTitle = $("#titleInput").value.trim() || DEFAULT_TITLE;
+  store.set("mg_words", rawWords);
+  store.set("mg_title", gameTitle);
+  dlg.close();
+  newGame();
+});
+$("#closeEditor").addEventListener("click", () => dlg.close());
+
+$("#resetWords").addEventListener("click", () => {
+  if (!confirm("要把詞庫和標題還原成檔案裡的預設內容嗎？")) return;
+  store.del("mg_words"); store.del("mg_title");
+  rawWords = DEFAULT_WORDS; gameTitle = DEFAULT_TITLE;
+  $("#titleInput").value = gameTitle;
+  $("#wordsInput").value = rawWords.trim();
+  updateCount();
+});
+
+$("#downloadWords").addEventListener("click", () => {
+  const blob = new Blob(["\uFEFF" + $("#wordsInput").value], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = ($("#titleInput").value.trim() || "詞庫") + ".txt";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$("#loadWords").addEventListener("click", () => $("#fileInput").click());
+$("#fileInput").addEventListener("change", e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    $("#wordsInput").value = String(r.result).replace(/^\uFEFF/, "").trim();
+    updateCount();
+    $("#warn").textContent = "";
+  };
+  r.readAsText(f, "UTF-8");
+  e.target.value = "";
+});
+
+/* ---------- 其他按鈕 ---------- */
+$("#newGame").addEventListener("click", newGame);
+$("#again").addEventListener("click", newGame);
+$("#openEditor").addEventListener("click", () => openEditor());
+$("#pairCount").addEventListener("change", newGame);
+$("#mode").addEventListener("change", newGame);
+$("#colorHint").addEventListener("change", () => {
+  $("#board").classList.toggle("color-on", $("#colorHint").checked);
+});
+$("#fullscreen").addEventListener("click", () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen?.();
+});
+
+newGame();
+</script>
+</body>
+</html>
